@@ -391,50 +391,31 @@ def conv_forward_naive(x, w, b, conv_param):
     # TODO: Implement the convolutional forward pass.                           #
     # Hint: you can use the function np.pad for padding.                        #
     #############################################################################
-    N, C, H, W = x.shape
-    F, _, HH, WW = w.shape
     pad = conv_param['pad']
     stride = conv_param['stride']
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
     Hout = 1 + (H + 2 * pad - HH) / stride
     Wout = 1 + (W + 2 * pad - WW) / stride
-
-    # pad_x shape: (N, C, H + 2 * pad, W + 2 * pad)
-    pad_x = np.zeros((1, C, H + 2 * pad, W + 2 * pad))
-    for i in range(N):
-        temp = np.lib.pad(x[i, :], pad,
-                          mode='constant', constant_values=0)[np.arange(pad, C + pad)]
-        pad_x = np.vstack((pad_x, temp[np.newaxis, :]))
-    pad_x = pad_x[1:]
-
-    # column_x shape: (N, C * HH * WW, Hout * Wout)
-    column_x = np.zeros((1, C * HH * WW, Hout * Wout))
-    for i in range(N):
-        # column shape: (C * HH * WW, Hout * Wout)
-        column = np.zeros((C * HH * WW, 1))
-        for filter_x in range(Wout):
-            for filter_y in range(Hout):
-                block = pad_x[i, :,
-                        filter_y * stride:filter_y * stride + HH,
-                        filter_x * stride:filter_x * stride + WW]
-                block = block.ravel(order='C')[:, np.newaxis]
-                column = np.hstack((column, block))
-        column = column[:, 1:]
-        column_x = np.vstack((column_x, column[np.newaxis, :]))
-    column_x = column_x[1:, :]
+    # print 'N:%d,C:%d,H:%d,W:%d,F:%d,HH:%d,WW:%d,Hout:%d,Wout:%d,pad:%d,stride:%d' \
+    #       % (N, C, H, W, F, HH, WW, Hout, Wout, pad, stride)
 
     # row_w shape: (F, C * HH * WW)
-    row_w = np.zeros((1, C * HH * WW))
-    for i in range(F):
-        block = w[i, :].ravel(order='C')[np.newaxis, :]
-        row_w = np.vstack((row_w, block))
-    row_w = row_w[1:, :]
+    row_w = w.reshape((F, -1))
 
-    out = np.zeros((1, F, Hout, Wout))
-    for i in range(N):
-        scores = (np.dot(row_w, column_x[i, :]) + b[:, np.newaxis]). \
-            reshape((F, Hout, Wout), order='F')
-        out = np.vstack((out, scores[np.newaxis, :]))
-    out = out[1:, :]
+    # pad_x shape: (N, C, H + 2 * pad, W + 2 * pad)
+    pad_x = np.pad(x, pad, 'constant', constant_values=0)
+    pad_x = pad_x[pad:-pad, pad:-pad]
+
+    out = np.zeros((N, F, Hout, Wout))
+    # column_x shape: (N, C * HH * WW, Hout * Wout)
+    for filter_W in range(Wout):
+        for filter_H in range(Hout):
+            block = pad_x[:, :,
+                    filter_H * stride:filter_H * stride + HH,
+                    filter_W * stride:filter_W * stride + WW]
+            block = block.reshape(N, -1)
+            out[:, :, filter_H, filter_W] = np.dot(block, row_w.T) + b
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -472,53 +453,30 @@ def conv_backward_naive(dout, cache):
     print 'N:%d,C:%d,H:%d,W:%d,F:%d,HH:%d,WW:%d,Hout:%d,Wout:%d,pad:%d,stride:%d' \
           % (N, C, H, W, F, HH, WW, Hout, Wout, pad, stride)
 
-    # pad_x shape: (N, C, H + 2 * pad, W + 2 * pad)
-    pad_x = np.zeros((1, C, H + 2 * pad, W + 2 * pad))
-    for i in range(N):
-        temp = np.lib.pad(x[i, :], pad,
-                          mode='constant', constant_values=0)[np.arange(pad, C + pad)]
-        pad_x = np.vstack((pad_x, temp[np.newaxis, :]))
-    pad_x = pad_x[1:]
-
-    # column_x shape: (N, C * HH * WW, Hout * Wout)
-    column_x = np.zeros((1, C * HH * WW, Hout * Wout))
-    for i in range(N):
-        # column shape: (C * HH * WW, Hout * Wout)
-        column = np.zeros((C * HH * WW, 1))
-        for filter_x in range(Wout):
-            for filter_y in range(Hout):
-                block = pad_x[i, :,
-                        filter_y * stride:filter_y * stride + HH,
-                        filter_x * stride:filter_x * stride + WW]
-                block = block.ravel(order='C')[:, np.newaxis]
-                column = np.hstack((column, block))
-        column = column[:, 1:]
-        column_x = np.vstack((column_x, column[np.newaxis, :]))
-    column_x = column_x[1:, :]
-
     # row_w shape: (F, C * HH * WW)
-    row_w = np.zeros((1, C * HH * WW))
-    for i in range(F):
-        block = w[i, :].ravel(order='C')[np.newaxis, :]
-        row_w = np.vstack((row_w, block))
-    row_w = row_w[1:, :]
+    row_w = w.reshape(F, -1)
 
-    # dout shape: (N, F, Hout, Wout)
-    dout = dout.reshape((N,F,Hout * Wout),order='F')
+    # pad_x shape: (N, C, H + 2 * pad, W + 2 * pad)
+    pad_x = np.pad(x, pad, 'constant', constant_values=0)
+    pad_x = pad_x[pad:-pad, pad:-pad]
 
-    db = np.sum(dout,axis=0)
-    db = np.sum(db,axis=1)
+    dpad_x = np.zeros(pad_x.shape)
+    dw = np.zeros(w.shape).reshape(F, -1)
+    for filter_W in range(Wout):
+        for filter_H in range(Hout):
+            dblock = dout[:, :, filter_H, filter_W]
+            dpad_x[:, :,
+            filter_H * stride:filter_H * stride + HH,
+            filter_W * stride:filter_W * stride + WW] += dblock.dot(row_w).reshape(N, C, HH, WW)
+            block = pad_x[:, :,
+                    filter_H * stride:filter_H * stride + HH,
+                    filter_W * stride:filter_W * stride + WW]
+            block = block.reshape(N, -1)
+            dw += dblock.T.dot(block)
 
-    # dw shape: (F, C, HH, WW)
-    dw = np.zeros(w.shape)
-    for i in range(N):
-        temp = dout[i].dot(column_x[i].T).reshape(F,C,HH,WW)
-        dw += temp
-
-    # dx shape: (N, C, H, W)
-    dx = np.zeros(x.shape)
-    for i in range(N):
-        temp = row_w.T.dot(dout[i])
+    dw = dw.reshape((F, C, HH, WW))
+    dx = dpad_x[:, :, pad:-pad, pad:-pad]
+    db = np.sum(dout, axis=(0, 2, 3))
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -544,7 +502,20 @@ def max_pool_forward_naive(x, pool_param):
     #############################################################################
     # TODO: Implement the max pooling forward pass                              #
     #############################################################################
-    pass
+    N, C, H, W = x.shape
+    HH = pool_param['pool_height']
+    WW = pool_param['pool_width']
+    stride = pool_param['stride']
+    Hout = (H - HH) / stride + 1
+    Wout = (W - WW) / stride + 1
+    out = np.zeros((N, C, Hout, Wout))
+    for filter_W in range(Wout):
+        for filter_H in range(Hout):
+            block = x[:, :,
+                    filter_H * stride:filter_H * stride + HH,
+                    filter_W * stride:filter_W * stride + WW]
+            blockmax = np.max(block, axis=(2, 3))
+            out[:, :, filter_H, filter_W] += blockmax
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -567,7 +538,24 @@ def max_pool_backward_naive(dout, cache):
     #############################################################################
     # TODO: Implement the max pooling backward pass                             #
     #############################################################################
-    pass
+    x, pool_param = cache
+    N, C, H, W = x.shape
+    HH = pool_param['pool_height']
+    WW = pool_param['pool_width']
+    stride = pool_param['stride']
+    Hout = (H - HH) / stride + 1
+    Wout = (W - WW) / stride + 1
+    dx = np.zeros(x.shape)
+    for filter_W in range(Wout):
+        for filter_H in range(Hout):
+            block = x[:, :,
+                    filter_H * stride:filter_H * stride + HH,
+                    filter_W * stride:filter_W * stride + WW]
+            blockarg = block.reshape(N, C, -1).argmax(axis=2).reshape((N * C, 1))
+            posY = blockarg / WW + filter_H * stride
+            posX = blockarg % WW + filter_W * stride
+            dx[np.arange(N * C) / C, np.arange(N * C) % C,posY[np.arange(N * C), 0], posX[np.arange(N * C), 0]] \
+                = dout[np.arange(N * C) / C, np.arange(N * C) % C,filter_H, filter_W]
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
