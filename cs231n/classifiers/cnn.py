@@ -49,8 +49,9 @@ class ThreeLayerConvNet(object):
         ############################################################################
         F = num_filters
         HH = filter_size
+        pad = (filter_size - 1) / 2
         C, H, W = input_dim
-        input_dims = C * H * W
+        input_dims = F * (1 + (H + 2 * pad - HH) / 1) ** 2 / 4
         self.params['W1'] = weight_scale * np.random.randn(F, C, HH, HH)
         self.params['b1'] = np.zeros(F)
         self.params['W2'] = weight_scale * np.random.randn(input_dims, hidden_dim)
@@ -112,10 +113,10 @@ class ThreeLayerConvNet(object):
         daffine, grads['W3'], grads['b3'] = affine_backward(dscores, affine_cache)
         grads['W3'] += self.reg * self.params['W3']
 
-        daffine_relu, grads['W2'], grads['b2'] = affine_backward(daffine, affine_relu_cache)
+        daffine_relu, grads['W2'], grads['b2'] = affine_relu_backward(daffine, affine_relu_cache)
         grads['W2'] += self.reg * self.params['W2']
 
-        dx, grads['W1'], grads['b1'] = conv_relu_pool_backward(daffine, conv_cache)
+        dx, grads['W1'], grads['b1'] = conv_relu_pool_backward(daffine_relu, conv_cache)
         grads['W1'] += self.reg * self.params['W1']
         ############################################################################
         #                             END OF YOUR CODE                             #
