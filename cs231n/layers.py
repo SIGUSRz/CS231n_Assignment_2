@@ -466,11 +466,11 @@ def conv_backward_naive(dout, cache):
         for filter_H in range(Hout):
             dblock = dout[:, :, filter_H, filter_W]
             dpad_x[:, :,
-            filter_H * stride:filter_H * stride + HH,
-            filter_W * stride:filter_W * stride + WW] += dblock.dot(row_w).reshape(N, C, HH, WW)
+                filter_H * stride:filter_H * stride + HH,
+                filter_W * stride:filter_W * stride + WW] += dblock.dot(row_w).reshape(N, C, HH, WW)
             block = pad_x[:, :,
-                    filter_H * stride:filter_H * stride + HH,
-                    filter_W * stride:filter_W * stride + WW]
+                        filter_H * stride:filter_H * stride + HH,
+                        filter_W * stride:filter_W * stride + WW]
             block = block.reshape(N, -1)
             dw += dblock.T.dot(block)
 

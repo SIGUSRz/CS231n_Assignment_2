@@ -17,7 +17,7 @@ class ThreeLayerConvNet(object):
     """
 
     def __init__(self, input_dim=(3, 32, 32), num_filters=32, filter_size=7,
-                 hidden_dim=100, num_classes=10, weight_scale=1e-3, reg=0.0,
+                 hidden_dim=100, num_classes=10, use_batchnorm=None,weight_scale=1e-3, reg=0.0,
                  dtype=np.float32):
         """
         Initialize a new network.
@@ -34,6 +34,7 @@ class ThreeLayerConvNet(object):
         - dtype: numpy datatype to use for computation.
         """
         self.params = {}
+        self.use_batchnorm = use_batchnorm
         self.reg = reg
         self.dtype = dtype
 
@@ -58,6 +59,9 @@ class ThreeLayerConvNet(object):
         self.params['b2'] = np.zeros(hidden_dim)
         self.params['W3'] = weight_scale * np.random.randn(hidden_dim, num_classes)
         self.params['b3'] = np.zeros(num_classes)
+        if self.use_batchnorm:
+            self.params['gamma'] = np.ones(hidden_dim)
+            self.params['beta'] = np.zeros(hidden_dim)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -74,6 +78,10 @@ class ThreeLayerConvNet(object):
         W1, b1 = self.params['W1'], self.params['b1']
         W2, b2 = self.params['W2'], self.params['b2']
         W3, b3 = self.params['W3'], self.params['b3']
+        mode = 'test' if y is None else 'train'
+        if self.use_batchnorm:
+            gamma,beta = self.params['gamma'],self.params['beta']
+            bn_param = {'mode':mode}
 
         # pass conv_param to the forward pass for the convolutional layer
         filter_size = W1.shape[2]
@@ -89,7 +97,11 @@ class ThreeLayerConvNet(object):
         # variable.                                                                #
         ############################################################################
         conv_out, conv_cache = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
-        affine_relu_out, affine_relu_cache = affine_relu_forward(conv_out, W2, b2)
+        if self.use_batchnorm:
+            affine_relu_out, affine_bn_relu_cache = \
+                affine_batchnorm_relu_forward(conv_out,W2,b2,gamma,beta,bn_param)
+        else:
+            affine_relu_out, affine_relu_cache = affine_relu_forward(conv_out, W2, b2)
         scores, affine_cache = affine_forward(affine_relu_out, W3, b3)
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -113,7 +125,12 @@ class ThreeLayerConvNet(object):
         daffine, grads['W3'], grads['b3'] = affine_backward(dscores, affine_cache)
         grads['W3'] += self.reg * self.params['W3']
 
-        daffine_relu, grads['W2'], grads['b2'] = affine_relu_backward(daffine, affine_relu_cache)
+        if self.use_batchnorm:
+            daffine_relu, grads['W2'], grads['b2'], grads['gamma'],grads['beta'] = \
+                affine_batchnorm_relu_backward(daffine, affine_bn_relu_cache)
+        else:
+            daffine_relu, grads['W2'], grads['b2']= \
+                affine_relu_backward(daffine, affine_relu_cache)
         grads['W2'] += self.reg * self.params['W2']
 
         dx, grads['W1'], grads['b1'] = conv_relu_pool_backward(daffine_relu, conv_cache)
@@ -125,4 +142,17 @@ class ThreeLayerConvNet(object):
         return loss, grads
 
 
-pass
+def affine_batchnorm_relu_forward(x, w, b, gamma, beta, params):
+    affine_out, affine_cache = affine_forward(x, w, b)
+    norm_out, batchnorm_cache = batchnorm_forward(affine_out, gamma, beta, params)
+    out, relu_cache = relu_forward(norm_out)
+    cache = (affine_cache, batchnorm_cache, relu_cache)
+    return out, cache
+
+
+def affine_batchnorm_relu_backward(dout, cache):
+    affine_cache, batchnorm_cache, relu_cache = cache
+    drelu = relu_backward(dout, relu_cache)
+    dnorm, dgamma, dbeta = batchnorm_backward_alt(drelu, batchnorm_cache)
+    dout, dw, db = affine_backward(dnorm, affine_cache)
+    return dout, dw, db, dgamma, dbeta
